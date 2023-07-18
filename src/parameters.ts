@@ -8,6 +8,8 @@ import {
   ResponseSchema,
   StringParameterType,
 } from './types'
+import { z } from 'zod'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 
 export class BaseParameter {
   public static isParameter = true
@@ -35,14 +37,9 @@ export class BaseParameter {
 
     return value
   }
-
-  validate(value: any): any {
-    return value
-  }
 }
 
 export class Arr extends BaseParameter {
-  public isArr = true
   private innerType
 
   constructor(innerType: any, params?: ParameterType) {
@@ -50,30 +47,8 @@ export class Arr extends BaseParameter {
     this.innerType = innerType
   }
 
-  validate(value: any): any {
-    value = super.validate(value)
-
-    if (this.params.required === false && (value === null || value === '')) {
-      return null
-    }
-
-    if (Array.isArray(value)) {
-      value = value.map((val) => {
-        return this.innerType.validate(val)
-      })
-    } else {
-      value = [this.innerType.validate(value)]
-    }
-
-    return value
-  }
-
-  // @ts-ignore
   getValue() {
-    return {
-      type: 'array',
-      items: this.innerType.getValue(),
-    }
+    return convertParams(this.innerType.getValue().array(), this.params)
   }
 }
 
@@ -87,297 +62,131 @@ export class Obj extends BaseParameter {
     this.fields = fields
   }
 
-  validate(value: any): any {
-    value = super.validate(value)
-
-    for (const [key, param] of Object.entries(this.fields)) {
-      try {
-        if (value[key] === undefined || value[key] === null) {
-          if (param.params.required) {
-            throw new ValidationError('is required')
-          }
-        } else {
-          value[key] = param.validate(value[key])
-        }
-      } catch (e) {
-        // @ts-ignore
-        e.key = (e.key || '') + `.${key}`
-
-        throw e
-      }
-    }
-
-    return value
-  }
-
-  // @ts-ignore
   getValue() {
-    const result: Record<string, any> = {
-      type: 'object',
-      properties: {},
-    }
-    const required = []
+    const values: any = {}
 
     for (const [key, value] of Object.entries(this.fields)) {
-      if (value.params?.required === true) {
-        required.push(key)
-      }
-
       if (value.getValue) {
-        result.properties[key] = value.getValue()
+        values[key] = value.getValue()
       } else {
-        result.properties[key] = value
+        values[key] = value
       }
     }
 
-    if (required.length > 0) {
-      result.required = required
-    }
-
-    if (this.params.xml) {
-      result.xml = this.params.xml
-    }
-
-    return result
+    return z.object(values)
   }
 }
 
+// @ts-ignore
+function convertParams(field, params) {
+  if (params.required === false)
+    // @ts-ignore
+    field = field.optional()
+
+  if (params.description) field = field.describe(params.description)
+
+  if (params.default)
+    // @ts-ignore
+    field = field.default(params.default)
+
+  return field
+}
+
 export class Num extends BaseParameter {
-  type = 'number'
-
-  validate(value: any): any {
-    value = super.validate(value)
-
-    value = Number.parseFloat(value)
-
-    if (isNaN(value)) {
-      throw new ValidationError('is not a valid number')
-    }
-
-    return value
+  getValue() {
+    return convertParams(z.coerce.number(), this.params)
   }
 }
 
 export class Int extends Num {
-  type = 'integer'
-
-  validate(value: any): any {
-    value = super.validate(value)
-
-    value = Number.parseInt(value)
-
-    if (isNaN(value)) {
-      throw new ValidationError('is not a valid integer')
-    }
-
-    return value
+  getValue() {
+    return convertParams(z.coerce.number().int(), this.params)
   }
 }
 
 export class Str extends BaseParameter {
-  type = 'string'
-  public declare params: StringParameterType
-
-  constructor(params?: StringParameterType) {
-    super(params)
-  }
-
-  validate(value: any): any {
-    value = super.validate(value)
-
-    if (typeof value !== 'string') {
-      value = value.toString()
-    }
-
-    if (this.params.format) {
-      if (this.params.format === 'date-time') {
-        value = new Date(value)
-
-        if (isNaN(value.getDay())) {
-          throw new ValidationError('is not a valid date time')
-        }
-      } else if (this.params.format === 'date') {
-        if (!value.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)) {
-          throw new ValidationError('is not a valid date')
-        }
-
-        value = new Date(value)
-
-        if (isNaN(value.getDay())) {
-          throw new ValidationError('is not a valid date')
-        }
-      }
-      // TODO: validate remaining formats
-    }
-
-    return value
-  }
-
   getValue() {
-    return {
-      ...super.getValue(),
-      format: this.params.format,
-    }
+    return convertParams(z.coerce.string(), this.params)
   }
 }
 
 export class DateTime extends Str {
-  type = 'string'
-  public declare params: StringParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      example: '2022-09-15T00:00:00Z',
-      ...params,
-      format: 'date-time',
-    })
+  getValue() {
+    return convertParams(z.coerce.string().datetime(), this.params)
   }
 }
 
 export class Regex extends Str {
-  type = 'string'
   public declare params: RegexParameterType
 
   constructor(params: RegexParameterType) {
     super(params)
   }
 
-  validate(value: any): any {
-    value = super.validate(value)
-
-    if (!value.match(this.params.pattern)) {
-      if (this.params.patternError) {
-        throw new ValidationError(`is not a valid ${this.params.patternError}`)
-      }
-      throw new ValidationError(
-        `does not match the pattern ${this.params.format}`
-      )
-    }
-
-    return value
-  }
-
   getValue() {
-    return {
-      ...super.getValue(),
-      pattern: this.params.pattern,
-    }
+    // @ts-ignore
+    return convertParams(
+      z.coerce.string().regex(this.params.pattern),
+      this.params
+    )
   }
 }
 
 export class Email extends Regex {
-  type = 'string'
-  public declare params: RegexParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
-      patternError: 'email',
-      ...params,
-      format: 'email',
-    })
+  getValue() {
+    return convertParams(z.coerce.string().email(), this.params)
   }
 }
 
 export class Uuid extends Regex {
-  type = 'string'
-  public declare params: RegexParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      pattern:
-        '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-      patternError: 'uuid',
-      ...params,
-      format: 'uuid',
-    })
+  getValue() {
+    return convertParams(z.coerce.string().uuid(), this.params)
   }
 }
 
 export class Hostname extends Regex {
-  type = 'string'
-  public declare params: RegexParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      pattern:
-        '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$',
-      patternError: 'hostname',
-      ...params,
-      format: 'hostname',
-    })
+  getValue() {
+    return convertParams(
+      z.coerce
+        .string()
+        .regex(
+          /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$/
+        ),
+      this.params
+    )
   }
 }
 
 export class Ipv4 extends Regex {
-  type = 'string'
-  public declare params: RegexParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      pattern:
-        '^(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}$',
-      patternError: 'ipv4',
-      ...params,
-      format: 'ipv4',
-    })
+  getValue() {
+    return convertParams(z.coerce.string().ip(), this.params)
   }
 }
 
 export class Ipv6 extends Regex {
-  type = 'string'
-  public declare params: RegexParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      pattern:
-        '^(?:(?:[a-fA-F\\d]{1,4}:){7}(?:[a-fA-F\\d]{1,4}|:)|(?:[a-fA-F\\d]{1,4}:){6}(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|:[a-fA-F\\d]{1,4}|:)|(?:[a-fA-F\\d]{1,4}:){5}(?::(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,2}|:)|(?:[a-fA-F\\d]{1,4}:){4}(?:(?::[a-fA-F\\d]{1,4}){0,1}:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,3}|:)|(?:[a-fA-F\\d]{1,4}:){3}(?:(?::[a-fA-F\\d]{1,4}){0,2}:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,4}|:)|(?:[a-fA-F\\d]{1,4}:){2}(?:(?::[a-fA-F\\d]{1,4}){0,3}:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,5}|:)|(?:[a-fA-F\\d]{1,4}:){1}(?:(?::[a-fA-F\\d]{1,4}){0,4}:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,6}|:)|(?::(?:(?::[a-fA-F\\d]{1,4}){0,5}:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}|(?::[a-fA-F\\d]{1,4}){1,7}|:)))(?:%[0-9a-zA-Z]{1,})?$',
-      patternError: 'ipv6',
-      ...params,
-      format: 'ipv6',
-    })
+  getValue() {
+    return convertParams(z.coerce.string().ip({ version: 'v6' }), this.params)
   }
 }
 
 export class DateOnly extends Str {
-  type = 'string'
-  public declare params: StringParameterType
-
-  constructor(params?: StringParameterType) {
-    super({
-      example: '2022-09-15',
-      ...params,
-      format: 'date',
-    })
+  getValue() {
+    return convertParams(
+      z.preprocess((val) => String(val).substring(0, 10), z.coerce.date()),
+      this.params
+    )
   }
 }
 
 export class Bool extends Str {
-  type = 'boolean'
-  private validValues = ['true', 'false']
-
-  validate(value: any): any {
-    value = super.validate(value)
-
-    value = value.toLowerCase()
-
-    if (!this.validValues.includes(value)) {
-      throw new ValidationError(
-        'is not a valid boolean, allowed values are true or false'
-      )
-    }
-
-    value = value === 'true'
-
-    return value
+  getValue() {
+    return convertParams(z.coerce.boolean(), this.params)
   }
 }
 
 export class Enumeration extends Str {
-  public isEnum = true
   public declare params: EnumerationParameterType
   public values: Record<string, any>
-  public keys: any
 
   constructor(params: EnumerationParameterType) {
     super(params)
@@ -385,39 +194,30 @@ export class Enumeration extends Str {
     let { values } = params
     if (Array.isArray(values))
       values = Object.fromEntries(values.map((x) => [x, x]))
-    this.keys = Object.keys(values)
+
+    if (this.params.enumCaseSensitive === false) {
+      values = Object.keys(values).reduce((accumulator, key) => {
+        // @ts-ignore
+        accumulator[key.toLowerCase()] = values[key]
+        return accumulator
+      }, {})
+    }
+
     this.values = values
   }
 
-  validate(value: any): any {
-    value = super.validate(value)
-
-    if (this.params.enumCaseSensitive !== false) {
-      value = this.params.values[value]
-    } else {
-      const key = this.keys.find(
-        (key: any) => key.toLowerCase() === value.toLowerCase()
-      )
-      value = this.params.values[key]
-    }
-
-    if (value === undefined) {
-      if (this.params.required === true) {
-        throw new ValidationError('is not one of available options')
-      }
-
-      // Parameter not required neither one of the available options
-      return null
-    }
-
-    return value
-  }
-
   getValue() {
-    return {
-      ...super.getValue(),
-      enum: this.keys,
+    let field
+    if (this.params.enumCaseSensitive) {
+      field = z.nativeEnum(this.values)
+    } else {
+      field = z.preprocess(
+        (val) => String(val).toLowerCase(),
+        z.nativeEnum(this.values)
+      )
     }
+
+    return convertParams(field, this.params)
   }
 }
 
@@ -438,6 +238,13 @@ export class Parameter {
   }
 
   getType(type: any, params: ParameterLocation): any {
+    if (type instanceof z.ZodType) {
+      return type
+    }
+    // console.log(123)
+    // console.log(type)
+    // console.log(type instanceof z.ZodType)
+    // console.log(type)
     if (type.generated === true) {
       return type
     }
@@ -492,11 +299,15 @@ export class Parameter {
       return new Obj(parsed, params)
     }
 
+    // console.log(123)
     throw new Error(`${type} not implemented`)
   }
 
   getValue(): Record<string, any> {
-    const schema = removeUndefinedFields(this.type.getValue())
+    // @ts-ignore
+    const schema = zodToJsonSchema(this.type.getValue(), {
+      target: 'openApi3',
+    })
 
     return {
       description: this.params.description,
@@ -508,19 +319,12 @@ export class Parameter {
   }
 
   validate(value: any): any {
-    if (value === undefined || value === null) {
-      if (this.params.default !== undefined && this.params.default !== null) {
-        value = this.params.default
-      } else {
-        if (this.params.required) {
-          throw new ValidationError('is required')
-        } else {
-          return null
-        }
-      }
+    const result = this.type.getValue().safeParse(value)
+    if (result.success) {
+      value = result.data
+    } else {
+      throw new ValidationError(result.error.issues)
     }
-
-    value = this.type.validate(value)
 
     return value
   }
@@ -537,7 +341,10 @@ export class Body extends Parameter {
   }
 
   getValue(): Record<string, any> {
-    const schema = removeUndefinedFields(this.type.getValue())
+    // @ts-ignore
+    const schema = zodToJsonSchema(this.type.getValue(), {
+      target: 'openApi3',
+    })
 
     const param: Record<string, any> = {
       description: this.paramsBody?.description,
@@ -644,21 +451,6 @@ export function Required(param: Parameter): Parameter {
   param.params.required = true
 
   return param
-}
-
-export function removeUndefinedFields(
-  obj: Record<string, any>
-): Record<string, any> {
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'object' && !Array.isArray(value))
-      obj[key] = removeUndefinedFields(value)
-
-    if (value === undefined) {
-      delete obj[key]
-    }
-  }
-
-  return obj
 }
 
 export function getFormatedParameters(

@@ -173,7 +173,9 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
 
       if (loaded)
         try {
-          validatedObj['body'] = new Body(requestBody).validate(json)
+          validatedObj['body'] = new Body(requestBody)
+            .getValue()
+            .safeParse(json)
         } catch (e) {
           validationErrors['body' + (e as ApiException).key] = (
             e as ApiException
