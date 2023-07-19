@@ -16,7 +16,7 @@ import {
   Str,
   Uuid,
   Path,
-} from '../src/parameters'
+} from '../src/deprecated/parameters'
 
 export class ToDoList extends OpenAPIRoute {
   static schema = {
@@ -47,7 +47,7 @@ export class ToDoList extends OpenAPIRoute {
       p_dateonly: Query(DateOnly),
       p_regex: Query(Regex, {
         pattern:
-          '^[\\+]?[(]?[0-9]{3}[)]?[-\\s\\.]?[0-9]{3}[-\\s\\.]?[0-9]{4,6}$',
+          /^[\\+]?[(]?[0-9]{3}[)]?[-\\s\\.]?[0-9]{3}[-\\s\\.]?[0-9]{4,6}$/,
       }),
       p_email: Query(Email),
       p_uuid: Query(Uuid),

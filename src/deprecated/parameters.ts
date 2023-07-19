@@ -1,4 +1,4 @@
-import { ValidationError } from './exceptions'
+import { ValidationError } from '../exceptions'
 import {
   EnumerationParameterType,
   ParameterBody,
@@ -7,14 +7,13 @@ import {
   RegexParameterType,
   ResponseSchema,
   StringParameterType,
-} from './types'
+} from '../types'
 import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 
 export class BaseParameter {
   public static isParameter = true
   public isParameter = true
-  type = 'string'
   public params: ParameterType
   public generated: boolean
 
@@ -23,19 +22,6 @@ export class BaseParameter {
     this.generated = true
 
     if (this.params.required === undefined) this.params.required = true
-  }
-
-  getValue() {
-    const value: Record<string, any> = {
-      type: this.type,
-      description: this.params.description,
-      example: this.params.example,
-      default: this.params.default,
-    }
-
-    if (this.params.deprecated) value.deprecated = this.params.deprecated
-
-    return value
   }
 }
 
@@ -66,7 +52,9 @@ export class Obj extends BaseParameter {
     const values: any = {}
 
     for (const [key, value] of Object.entries(this.fields)) {
+      // @ts-ignore
       if (value.getValue) {
+        // @ts-ignore
         values[key] = value.getValue()
       } else {
         values[key] = value
@@ -124,8 +112,8 @@ export class Regex extends Str {
   }
 
   getValue() {
-    // @ts-ignore
     return convertParams(
+      // @ts-ignore
       z.coerce.string().regex(this.params.pattern),
       this.params
     )
@@ -304,6 +292,15 @@ export class Parameter {
   }
 
   getValue(): Record<string, any> {
+    let zodSchema: any = this.type
+    if (zodSchema.getValue) {
+      return zodSchema.getValue()
+    }
+
+    return zodSchema
+  }
+
+  getSchema(): Record<string, any> {
     // @ts-ignore
     const schema = zodToJsonSchema(this.type.getValue(), {
       target: 'openApi3',
@@ -319,6 +316,7 @@ export class Parameter {
   }
 
   validate(value: any): any {
+    // @ts-ignore
     const result = this.type.getValue().safeParse(value)
     if (result.success) {
       value = result.data
@@ -341,8 +339,13 @@ export class Body extends Parameter {
   }
 
   getValue(): Record<string, any> {
+    let zodSchema: any = this.type
+    if (zodSchema.getValue) {
+      return zodSchema.getValue()
+    }
+
     // @ts-ignore
-    const schema = zodToJsonSchema(this.type.getValue(), {
+    const schema = zodToJsonSchema(zodSchema, {
       target: 'openApi3',
     })
 
@@ -431,9 +434,9 @@ export function extractQueryParameters(request: Request): Record<string, any> {
 
   const params: Record<string, any> = {}
   for (const param of query.split('&')) {
-    const paramSplitted = param.split('=')
-    const key = paramSplitted[0]
-    const value = paramSplitted[1]
+    const paramSplit = param.split('=')
+    const key = paramSplit[0]
+    const value = paramSplit[1]
 
     if (params[key] === undefined) {
       params[key] = value

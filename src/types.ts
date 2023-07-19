@@ -1,4 +1,4 @@
-import { Parameter } from './parameters'
+import { Parameter } from './deprecated/parameters'
 import { RequestLike, Route, RouteEntry, RouterType } from 'itty-router'
 
 export interface ClassRoute {
@@ -78,7 +78,7 @@ export interface EnumerationParameterType extends StringParameterType {
 }
 
 export interface RegexParameterType extends StringParameterType {
-  pattern: string
+  pattern: RegExp
   patternError?: string
 }
 
@@ -90,7 +90,7 @@ export interface ParameterLocation extends StringParameterType {
   // Because this is a generic initializer, it must include all available options
   values?: Record<string, any>
   enumCaseSensitive?: boolean
-  pattern?: string
+  pattern?: string | RegExp
   patternError?: string
 }
 

@@ -1,6 +1,6 @@
 import { getReDocUI, getSwaggerUI } from './ui'
 import { IRequest, Router } from 'itty-router'
-import { getFormatedParameters, Path } from './parameters'
+import { getFormatedParameters, Path } from './deprecated/parameters'
 import {
   APIType,
   AuthType,
@@ -74,8 +74,8 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
                 operationId = `${prop.toString()}_${handler.name}`
               }
 
-              if (handler.getParsedSchema) {
-                schema = handler.getParsedSchema()
+              if (handler.getSchemaOpenAPI) {
+                schema = handler.getSchemaOpenAPI()
                 break
               }
             }

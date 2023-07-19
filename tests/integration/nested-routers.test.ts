@@ -1,7 +1,7 @@
 import 'isomorphic-fetch'
 
 import { OpenAPIRoute } from '../../src/route'
-import { Path } from '../../src/parameters'
+import { Path } from '../../src/deprecated/parameters'
 import { OpenAPIRouter } from '../../src/openapi'
 import { buildRequest } from '../utils'
 
