@@ -100,7 +100,7 @@ export interface ParameterBody {
 }
 
 export interface ResponseSchema {
-  description?: string
+  description: string
   schema?: Record<any, any>
   contentType?: string
 }

@@ -8,10 +8,11 @@ import {
   Body,
   extractParameter,
   extractQueryParameters,
-  getFormatedParameters,
-  Resp,
 } from './deprecated/parameters'
 import { z, ZodType } from 'zod'
+import { isAnyZodType } from './zod/utils'
+import { RouteConfig } from '@asteasolutions/zod-to-openapi'
+import { ResponseConfig } from '@asteasolutions/zod-to-openapi/dist/openapi-registry'
 
 export class OpenAPIRoute implements OpenAPIRouteSchema {
   static isRoute = true
@@ -37,32 +38,98 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
     return this.__proto__.constructor.getSchema()
   }
 
-  static getParsedSchema(): Record<any, any> {
+  static getSchemaZod(): RouteConfig {
     const schema = this.getSchema()
 
-    let requestBody = null
-    if (schema.requestBody) {
-      requestBody = new Body(schema.requestBody, {
-        contentType: schema.requestBody.contentType,
-      }).getValue()
+    let parameters: any = null
+    let requestBody: object = schema.requestBody as object
+    const responses: any = {}
+
+    if (!isAnyZodType(requestBody)) {
+      requestBody = z.object({
+        ...requestBody,
+      })
     }
 
-    const responses: Record<string, any> = {}
+    requestBody = {
+      content: {
+        'application/json': {
+          schema: requestBody,
+        },
+      },
+    }
+
     if (schema.responses) {
       for (const [key, value] of Object.entries(schema.responses)) {
-        const resp = new Resp(value.schema, value)
-        responses[key] = resp.getValue()
+        let responseSchema: object = (value.schema as object) || {}
+
+        if (!isAnyZodType(responseSchema)) {
+          responseSchema = z.object({
+            ...responseSchema,
+          })
+        }
+
+        const contentType = value.contentType || 'application/json'
+
+        // @ts-ignore
+        responses[key] = {
+          description: value.description,
+          content: {
+            [contentType]: {
+              schema: responseSchema,
+            },
+          },
+        }
       }
     }
 
+    if (schema.parameters) {
+      let values = schema.parameters
+      const _params: any = {}
+
+      // Convert parameter array into object
+      if (Array.isArray(values)) {
+        values = values.reduce(
+          // @ts-ignore
+          (obj, item) => Object.assign(obj, { [item.params.name]: item }),
+          {}
+        )
+      }
+
+      for (const [key, value] of Object.entries(values as Record<any, any>)) {
+        const location = value.location === 'path' ? 'params' : value.location
+
+        if (!_params[location]) {
+          _params[location] = {}
+        }
+
+        // console.log(value)
+        _params[location][key] = value.getValue()
+      }
+
+      for (const [key, value] of Object.entries(_params)) {
+        _params[key] = z.object(value as any)
+      }
+
+      parameters = _params
+    }
+
+    delete schema.requestBody
+    delete schema.parameters
+    delete schema.responses
+
+    // console.log(requestBody.shape)
+    // console.log(parameters.shape)
+
     // Deep copy
+    //@ts-ignore
     return {
       ...schema,
-      parameters: schema.parameters
-        ? getFormatedParameters(schema.parameters)
-        : [],
+      request: {
+        body: requestBody,
+        ...parameters,
+      },
       responses: responses,
-      ...(requestBody ? { requestBody: requestBody } : {}),
     }
   }
 
@@ -256,7 +323,6 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
       (requestBody.contentType === undefined ||
         requestBody.contentType === 'application/json')
     ) {
-      console.log(new Body(requestBody))
       // @ts-ignore
       endpointParams['body'] = new Body(requestBody).type.getValue()
 
@@ -283,7 +349,7 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
       validationSchema = validationSchema.strict()
     }
 
-    console.log(validationSchema.shape)
+    // console.log(validationSchema.shape)
     const validationResult = validationSchema.safeParse(endpointRawData)
     // console.log(validationResult.error.issues)
 

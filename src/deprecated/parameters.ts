@@ -6,64 +6,9 @@ import {
   ParameterType,
   RegexParameterType,
   ResponseSchema,
-  StringParameterType,
 } from '../types'
 import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
-
-export class BaseParameter {
-  public static isParameter = true
-  public isParameter = true
-  public params: ParameterType
-  public generated: boolean
-
-  constructor(params?: ParameterType) {
-    this.params = params || {}
-    this.generated = true
-
-    if (this.params.required === undefined) this.params.required = true
-  }
-}
-
-export class Arr extends BaseParameter {
-  private innerType
-
-  constructor(innerType: any, params?: ParameterType) {
-    super(params)
-    this.innerType = innerType
-  }
-
-  getValue() {
-    return convertParams(this.innerType.getValue().array(), this.params)
-  }
-}
-
-export class Obj extends BaseParameter {
-  public isObj = true
-
-  private fields: Record<string, BaseParameter>
-
-  constructor(fields: Record<string, BaseParameter>, params?: ParameterType) {
-    super(params) // TODO: fix obj params
-    this.fields = fields
-  }
-
-  getValue() {
-    const values: any = {}
-
-    for (const [key, value] of Object.entries(this.fields)) {
-      // @ts-ignore
-      if (value.getValue) {
-        // @ts-ignore
-        values[key] = value.getValue()
-      } else {
-        values[key] = value
-      }
-    }
-
-    return z.object(values)
-  }
-}
 
 // @ts-ignore
 function convertParams(field, params) {
@@ -80,139 +25,148 @@ function convertParams(field, params) {
   return field
 }
 
-export class Num extends BaseParameter {
-  getValue() {
-    return convertParams(z.coerce.number(), this.params)
+export class Arr {
+  constructor(innerType: any, params?: ParameterType) {
+    return convertParams(innerType.getValue().array(), params)
   }
 }
 
-export class Int extends Num {
-  getValue() {
-    return convertParams(z.coerce.number().int(), this.params)
+export class Obj {
+  constructor(fields: object, params?: ParameterType) {
+    const values: any = {}
+
+    for (const [key, value] of Object.entries(fields)) {
+      // @ts-ignore
+      if (value.getValue) {
+        // @ts-ignore
+        values[key] = value.getValue()
+      } else {
+        values[key] = value
+      }
+    }
+
+    return z.object(values)
   }
 }
 
-export class Str extends BaseParameter {
-  getValue() {
-    return convertParams(z.coerce.string(), this.params)
+export class Num {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.number(), params)
   }
 }
 
-export class DateTime extends Str {
-  getValue() {
-    return convertParams(z.coerce.string().datetime(), this.params)
+export class Int {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.number().int(), params)
   }
 }
 
-export class Regex extends Str {
-  public declare params: RegexParameterType
+export class Str {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string(), params)
+  }
+}
 
+export class DateTime {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string().datetime(), params)
+  }
+}
+
+export class Regex {
   constructor(params: RegexParameterType) {
-    super(params)
-  }
-
-  getValue() {
     return convertParams(
       // @ts-ignore
-      z.coerce.string().regex(this.params.pattern),
-      this.params
+      z.coerce.string().regex(params.pattern),
+      params
     )
   }
 }
 
-export class Email extends Regex {
-  getValue() {
-    return convertParams(z.coerce.string().email(), this.params)
+export class Email {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string().email(), params)
   }
 }
 
-export class Uuid extends Regex {
-  getValue() {
-    return convertParams(z.coerce.string().uuid(), this.params)
+export class Uuid {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string().uuid(), params)
   }
 }
 
-export class Hostname extends Regex {
-  getValue() {
+export class Hostname {
+  constructor(params?: ParameterType) {
     return convertParams(
       z.coerce
         .string()
         .regex(
           /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$/
         ),
-      this.params
+      params
     )
   }
 }
 
-export class Ipv4 extends Regex {
-  getValue() {
-    return convertParams(z.coerce.string().ip(), this.params)
+export class Ipv4 {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string().ip(), params)
   }
 }
 
-export class Ipv6 extends Regex {
-  getValue() {
-    return convertParams(z.coerce.string().ip({ version: 'v6' }), this.params)
+export class Ipv6 {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.string().ip({ version: 'v6' }), params)
   }
 }
 
-export class DateOnly extends Str {
-  getValue() {
+export class DateOnly {
+  constructor(params?: ParameterType) {
     return convertParams(
       z.preprocess((val) => String(val).substring(0, 10), z.coerce.date()),
-      this.params
+      params
     )
   }
 }
 
-export class Bool extends Str {
-  getValue() {
-    return convertParams(z.coerce.boolean(), this.params)
+export class Bool {
+  constructor(params?: ParameterType) {
+    return convertParams(z.coerce.boolean(), params)
   }
 }
 
-export class Enumeration extends Str {
-  public declare params: EnumerationParameterType
-  public values: Record<string, any>
-
+export class Enumeration {
   constructor(params: EnumerationParameterType) {
-    super(params)
-
     let { values } = params
     if (Array.isArray(values))
       values = Object.fromEntries(values.map((x) => [x, x]))
 
-    if (this.params.enumCaseSensitive === false) {
+    if (params.enumCaseSensitive === false) {
       values = Object.keys(values).reduce((accumulator, key) => {
         // @ts-ignore
         accumulator[key.toLowerCase()] = values[key]
         return accumulator
       }, {})
+
+      let field
+      if (params.enumCaseSensitive) {
+        field = z.nativeEnum(values)
+      } else {
+        field = z.preprocess(
+          (val) => String(val).toLowerCase(),
+          z.nativeEnum(values)
+        )
+      }
+
+      return convertParams(field, params)
     }
-
-    this.values = values
-  }
-
-  getValue() {
-    let field
-    if (this.params.enumCaseSensitive) {
-      field = z.nativeEnum(this.values)
-    } else {
-      field = z.preprocess(
-        (val) => String(val).toLowerCase(),
-        z.nativeEnum(this.values)
-      )
-    }
-
-    return convertParams(field, this.params)
   }
 }
 
 export class Parameter {
   public location: string
   private rawType: any
-  public type: BaseParameter
+  public type
   public params: ParameterLocation
 
   constructor(location: string, rawType: any, params: ParameterLocation) {
@@ -448,12 +402,6 @@ export function extractQueryParameters(request: Request): Record<string, any> {
   }
 
   return params
-}
-
-export function Required(param: Parameter): Parameter {
-  param.params.required = true
-
-  return param
 }
 
 export function getFormatedParameters(
