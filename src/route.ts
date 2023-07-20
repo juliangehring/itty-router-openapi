@@ -4,15 +4,10 @@ import {
   RouteOptions,
   RouteValidated,
 } from './types'
-import {
-  Body,
-  extractParameter,
-  extractQueryParameters,
-} from './deprecated/parameters'
+import { extractQueryParameters } from './deprecated/parameters'
 import { z, ZodType } from 'zod'
-import { isAnyZodType } from './zod/utils'
+import { isAnyZodType, legacyTypeIntoZod } from './zod/utils'
 import { RouteConfig } from '@asteasolutions/zod-to-openapi'
-import { ResponseConfig } from '@asteasolutions/zod-to-openapi/dist/openapi-registry'
 
 export class OpenAPIRoute implements OpenAPIRouteSchema {
   static isRoute = true
@@ -39,24 +34,33 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
   }
 
   static getSchemaZod(): RouteConfig {
-    const schema = this.getSchema()
+    // Deep copy
+    const schema = { ...this.getSchema() }
 
-    let parameters: any = null
+    let parameters: any = {}
     let requestBody: object = schema.requestBody as object
     const responses: any = {}
+    // console.log(requestBody)
 
-    if (!isAnyZodType(requestBody)) {
-      requestBody = z.object({
-        ...requestBody,
-      })
-    }
+    if (requestBody) {
+      if (!isAnyZodType(requestBody)) {
+        // console.log(requestBody)
+        // console.log(legacyTypeIntoZod(requestBody).shape)
+        requestBody = legacyTypeIntoZod(requestBody)
+      }
 
-    requestBody = {
-      content: {
-        'application/json': {
-          schema: requestBody,
+      // console.log(requestBody)
+      // console.log(requestBody.shape)
+      requestBody = {
+        content: {
+          'application/json': {
+            schema: requestBody,
+          },
         },
-      },
+      }
+      // console.log(requestBody.content)
+
+      parameters.body = requestBody
     }
 
     if (schema.responses) {
@@ -111,7 +115,10 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
         _params[key] = z.object(value as any)
       }
 
-      parameters = _params
+      parameters = {
+        ...parameters,
+        ..._params,
+      }
     }
 
     delete schema.requestBody
@@ -126,7 +133,6 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
     return {
       ...schema,
       request: {
-        body: requestBody,
         ...parameters,
       },
       responses: responses,
@@ -263,7 +269,8 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
   async execute(...args: any[]) {
     const { data, errors } = await this.validateRequest(args[0])
 
-    if (Object.keys(errors).length > 0) {
+    // console.log(errors)
+    if (errors) {
       return this.handleValidationError(errors)
     }
 
@@ -279,68 +286,56 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
   }
 
   async validateRequest(request: Request): Promise<RouteValidated> {
-    const params = this.getSchema().parameters || {}
-    const requestBody = this.getSchema().requestBody
+    // @ts-ignore
+    const schema: RouteConfig = this.__proto__.constructor.getSchemaZod()
+    const rawSchema: any = {}
+    if (schema.request?.params) {
+      rawSchema['params'] = schema.request?.params
+    }
+    if (schema.request?.query) {
+      rawSchema['query'] = schema.request?.query
+    }
+    if (schema.request?.headers) {
+      rawSchema['headers'] = schema.request?.headers
+    }
+
+    const unvalidatedData: any = {}
+
     const queryParams = extractQueryParameters(request)
-    const endpointParams: any = {}
-    const endpointRawData: any = {}
-    if (this.getSchema().parameters) {
-      let values = this.getSchema().parameters
-      const _params: any = {}
+    if (queryParams) unvalidatedData['query'] = queryParams
 
-      if (Array.isArray(values)) {
-        values = values.reduce(
-          // @ts-ignore
-          (obj, item) => Object.assign(obj, { [item.params.name]: item }),
-          {}
-        )
-      }
+    // @ts-ignore
+    if (request.params)
+      // @ts-ignore
+      unvalidatedData['params'] = request.params
 
-      for (const [key, value] of Object.entries(values as Record<any, any>)) {
-        if (!_params[value.location]) {
-          _params[value.location] = {}
-          endpointRawData[value.location] = {}
-        }
-
-        _params[value.location][key] = value.getValue()
-
-        endpointRawData[value.location][key] = extractParameter(
-          request,
-          queryParams,
-          key,
-          value.location
-        )
-      }
-
-      for (const [key, value] of Object.entries(_params)) {
-        endpointParams[key] = z.object(value as any)
+    if (schema.request?.headers) {
+      unvalidatedData['headers'] = {}
+      // @ts-ignore
+      for (const header of Object.keys(schema.request?.headers.shape)) {
+        // @ts-ignore
+        unvalidatedData.headers[header] = request.headers.get(header)
       }
     }
 
     if (
       request.method.toLowerCase() !== 'get' &&
-      requestBody &&
-      (requestBody.contentType === undefined ||
-        requestBody.contentType === 'application/json')
+      schema.request?.body &&
+      schema.request?.body.content['application/json'] &&
+      schema.request?.body.content['application/json'].schema
     ) {
-      // @ts-ignore
-      endpointParams['body'] = new Body(requestBody).type.getValue()
-
-      let json
+      rawSchema['body'] = schema.request.body.content['application/json'].schema
 
       // eslint-disable-next-line no-useless-catch
       try {
-        json = await request.json()
+        unvalidatedData['body'] = await request.json()
       } catch (e) {
-        throw e
         // TODO
-        // validationErrors['body'] = (e as ApiException).message
+        throw e
       }
-
-      endpointRawData['body'] = json
     }
 
-    let validationSchema: any = z.object(endpointParams)
+    let validationSchema: any = z.object(rawSchema)
 
     if (
       this.params?.raiseUnknownParameters === undefined ||
@@ -349,13 +344,13 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
       validationSchema = validationSchema.strict()
     }
 
-    // console.log(validationSchema.shape)
-    const validationResult = validationSchema.safeParse(endpointRawData)
-    // console.log(validationResult.error.issues)
+    // console.log(validationSchema)
+    const validatedData = validationSchema.safeParse(unvalidatedData)
+    // console.log(validationResult)
 
     return {
-      data: validationResult.data,
-      errors: validationResult.error.flatten(),
+      data: validatedData.success ? validatedData.data : undefined,
+      errors: !validatedData.success ? validatedData.error.issues : undefined,
     }
   }
 

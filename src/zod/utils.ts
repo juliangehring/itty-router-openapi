@@ -1,45 +1,54 @@
-// Code taken from zod-to-openapi
-
 import type { z } from 'zod'
-
-type ZodTypes = {
-  ZodAny: z.ZodAny
-  ZodArray: z.ZodArray<any>
-  ZodBoolean: z.ZodBoolean
-  ZodBranded: z.ZodBranded<any, any>
-  ZodDefault: z.ZodDefault<any>
-  ZodEffects: z.ZodEffects<any>
-  ZodEnum: z.ZodEnum<any>
-  ZodIntersection: z.ZodIntersection<any, any>
-  ZodLiteral: z.ZodLiteral<any>
-  ZodNativeEnum: z.ZodNativeEnum<any>
-  ZodNever: z.ZodNever
-  ZodNull: z.ZodNull
-  ZodNullable: z.ZodNullable<any>
-  ZodNumber: z.ZodNumber
-  ZodObject: z.AnyZodObject
-  ZodOptional: z.ZodOptional<any>
-  ZodPipeline: z.ZodPipeline<any, any>
-  ZodRecord: z.ZodRecord
-  ZodSchema: z.ZodSchema
-  ZodString: z.ZodString
-  ZodTuple: z.ZodTuple
-  ZodType: z.ZodType
-  ZodTypeAny: z.ZodTypeAny
-  ZodUnion: z.ZodUnion<any>
-  ZodDiscriminatedUnion: z.ZodDiscriminatedUnion<any, any>
-  ZodUnknown: z.ZodUnknown
-  ZodVoid: z.ZodVoid
-  ZodDate: z.ZodDate
-}
-
-export function isZodType<TypeName extends keyof ZodTypes>(
-  schema: object,
-  typeName: TypeName
-): schema is ZodTypes[TypeName] {
-  return (schema as any)?._def?.typeName === typeName
-}
+import { Arr, Bool, DateTime, Num, Obj, Str } from '../deprecated/parameters'
 
 export function isAnyZodType(schema: object): schema is z.ZodType {
-  return '_def' in schema
+  return schema._def !== undefined
+}
+
+export function legacyTypeIntoZod(type: any): any {
+  if (isAnyZodType(type)) {
+    return type
+  }
+
+  if (type === String) {
+    return new Str()
+  }
+
+  if (typeof type === 'string') {
+    return new Str({ example: type })
+  }
+
+  if (type === Number) {
+    return new Num()
+  }
+
+  if (typeof type === 'number') {
+    return new Num({ example: type })
+  }
+
+  if (type === Boolean) {
+    return new Bool()
+  }
+
+  if (typeof type === 'boolean') {
+    return new Bool({ example: type })
+  }
+
+  if (type === Date) {
+    return new DateTime()
+  }
+
+  if (Array.isArray(type)) {
+    if (type.length === 0) {
+      throw new Error('Arr must have a type')
+    }
+
+    return new Arr(type)
+  }
+
+  if (typeof type === 'object') {
+    return new Obj(type)
+  }
+
+  throw new Error(`${type} not implemented`)
 }

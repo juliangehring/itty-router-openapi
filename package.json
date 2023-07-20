@@ -85,9 +85,8 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^5.3.1",
-    "itty-router": "^4.0.13",
-    "zod": "^3.21.4",
-    "zod-to-json-schema": "^3.21.4"
+    "itty-router": "^4.0.14",
+    "zod": "^3.21.4"
   },
   "exports": {
     ".": {

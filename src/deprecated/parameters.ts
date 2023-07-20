@@ -8,10 +8,12 @@ import {
   ResponseSchema,
 } from '../types'
 import { z } from 'zod'
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import { legacyTypeIntoZod } from '../zod/utils'
 
 // @ts-ignore
 function convertParams(field, params) {
+  params = params || {}
+  // console.log(params.required)
   if (params.required === false)
     // @ts-ignore
     field = field.optional()
@@ -27,25 +29,19 @@ function convertParams(field, params) {
 
 export class Arr {
   constructor(innerType: any, params?: ParameterType) {
-    return convertParams(innerType.getValue().array(), params)
+    return convertParams(legacyTypeIntoZod(innerType[0]).array(), params)
   }
 }
 
 export class Obj {
   constructor(fields: object, params?: ParameterType) {
-    const values: any = {}
-
+    const parsed: Record<string, any> = {}
     for (const [key, value] of Object.entries(fields)) {
-      // @ts-ignore
-      if (value.getValue) {
-        // @ts-ignore
-        values[key] = value.getValue()
-      } else {
-        values[key] = value
-      }
+      parsed[key] = legacyTypeIntoZod(value)
     }
+    // console.log(parsed)
 
-    return z.object(values)
+    return z.object(parsed)
   }
 }
 
@@ -377,11 +373,13 @@ export function extractParameter(
   }
 }
 
-export function extractQueryParameters(request: Request): Record<string, any> {
+export function extractQueryParameters(
+  request: Request
+): Record<string, any> | null {
   const url = decodeURIComponent(request.url).split('?')
 
   if (url.length === 1) {
-    return {}
+    return null
   }
 
   const query = url.slice(1).join('?')

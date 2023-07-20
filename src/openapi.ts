@@ -16,6 +16,7 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
   const registry = new OpenAPIRegistryMerger()
 
   const getGeneratedSchema = () => {
+    // console.log(router.routes)
     const generator = new OpenApiGeneratorV31(registry.definitions)
 
     return generator.generateDocument({
@@ -51,7 +52,9 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
 
   // @ts-ignore
   const routerProxy: OpenAPIRouter = new Proxy(router, {
-    get: (target, prop, receiver) => {
+    // @ts-ignore
+    get: (target: any, prop: string, receiver: object, path: string) => {
+      // console.log(path)
       if (prop === 'original') {
         return router
       }
@@ -88,7 +91,7 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
 
               if (handler.getSchemaZod) {
                 schema = handler.getSchemaZod()
-                // console.log(schema.responses[200])
+                // console.log(schema)
                 break
               }
             }
@@ -142,16 +145,20 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
           }
         }
 
+        // console.log(`${prop.toString()}`)
+        // @ts-ignore
+        // console.log(Reflect.routes)
         return Reflect.get(
           target,
           prop,
-          receiver
+          receiver,
+          path
         )(
           route,
           ...handlers.map((handler: any) => {
-            console.log(route)
-            console.log(handlers)
-            if (handler.schema !== undefined) {
+            // console.log(route)
+            // console.log(handlers)
+            if (handler.schema instanceof OpenAPIRegistryMerger) {
               return handler.handle
             }
 
@@ -162,7 +169,7 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
                 }).execute(...params)
             }
 
-            console.log(handler())
+            // console.log(handler())
             return handler
           })
         )
