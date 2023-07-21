@@ -1,16 +1,18 @@
 import { getReDocUI, getSwaggerUI } from './ui'
 import { IRequest, Router } from 'itty-router'
-import { getFormatedParameters, Path } from './deprecated/parameters'
 import {
   APIType,
   AuthType,
   OpenAPIRouterSchema,
-  OpenAPISchema,
   RouterOptions,
   SchemaVersion,
 } from './types'
-import { OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi'
+import {
+  OpenApiGeneratorV31,
+  RouteConfig,
+} from '@asteasolutions/zod-to-openapi'
 import { OpenAPIRegistryMerger } from './zod/registry'
+import { z } from 'zod'
 
 export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
   const registry = new OpenAPIRegistryMerger()
@@ -80,7 +82,7 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
                 .replace(/:(\w+)/g, '{$1}') // convert parameters into openapi compliant
 
             // @ts-ignore
-            let schema: OpenAPISchema = undefined
+            let schema: RouteConfig = undefined
             // @ts-ignore
             let operationId: string = undefined
 
@@ -102,25 +104,28 @@ export function OpenAPIRouter(options?: RouterOptions): OpenAPIRouterSchema {
 
             if (schema === undefined) {
               // No schema for this route, try to guest the parameters
-              const params = route.match(/:(\w+)/g)
 
+              // @ts-ignore
               schema = {
                 operationId: operationId,
-                // @ts-ignore
-                parameters: params
-                  ? getFormatedParameters(
-                      params.map((param) => {
-                        return Path(String, {
-                          name: param.replace(':', ''),
-                        })
-                      })
-                    )
-                  : [],
                 responses: {
-                  '200': {
-                    description: 'Successfully Response',
+                  200: {
+                    description: 'Object with user data.',
                   },
                 },
+              }
+
+              const params = route.match(/:(\w+)/g)
+              if (params) {
+                schema.request = {
+                  // TODO: make sure this works
+                  params: z.object(
+                    params.reduce(
+                      (obj, item) => Object.assign(obj, { [item]: z.string() }),
+                      {}
+                    )
+                  ),
+                }
               }
             } else {
               // Schema was provided in the endpoint

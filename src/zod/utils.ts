@@ -5,13 +5,25 @@ export function isAnyZodType(schema: object): schema is z.ZodType {
   return schema._def !== undefined
 }
 
-export function legacyTypeIntoZod(type: any): any {
+export function legacyTypeIntoZod(type: any, params?: any): any {
+  params = params || {}
+
   if (isAnyZodType(type)) {
     return type
   }
 
+  // Legacy support
+  if (type.generator === true) {
+    return type(params)
+  }
+
   if (type === String) {
-    return new Str()
+    // console.log(1)
+    // console.log(type)
+    // console.log(params)
+    const asd = new Str(params)
+    // console.log(asd)
+    return asd
   }
 
   if (typeof type === 'string') {
@@ -19,7 +31,7 @@ export function legacyTypeIntoZod(type: any): any {
   }
 
   if (type === Number) {
-    return new Num()
+    return new Num(params)
   }
 
   if (typeof type === 'number') {
@@ -27,7 +39,7 @@ export function legacyTypeIntoZod(type: any): any {
   }
 
   if (type === Boolean) {
-    return new Bool()
+    return new Bool(params)
   }
 
   if (typeof type === 'boolean') {
@@ -35,7 +47,7 @@ export function legacyTypeIntoZod(type: any): any {
   }
 
   if (type === Date) {
-    return new DateTime()
+    return new DateTime(params)
   }
 
   if (Array.isArray(type)) {

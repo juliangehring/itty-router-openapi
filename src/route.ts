@@ -68,9 +68,7 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
         let responseSchema: object = (value.schema as object) || {}
 
         if (!isAnyZodType(responseSchema)) {
-          responseSchema = z.object({
-            ...responseSchema,
-          })
+          responseSchema = legacyTypeIntoZod(responseSchema)
         }
 
         const contentType = value.contentType || 'application/json'
@@ -95,20 +93,18 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
       if (Array.isArray(values)) {
         values = values.reduce(
           // @ts-ignore
-          (obj, item) => Object.assign(obj, { [item.params.name]: item }),
+          (obj, item) => Object.assign(obj, { [item.name]: item }),
           {}
         )
       }
 
       for (const [key, value] of Object.entries(values as Record<any, any>)) {
-        const location = value.location === 'path' ? 'params' : value.location
-
-        if (!_params[location]) {
-          _params[location] = {}
+        if (!_params[value.location]) {
+          _params[value.location] = {}
         }
 
         // console.log(value)
-        _params[location][key] = value.getValue()
+        _params[value.location][key] = value.type
       }
 
       for (const [key, value] of Object.entries(_params)) {
@@ -136,120 +132,6 @@ export class OpenAPIRoute implements OpenAPIRouteSchema {
         ...parameters,
       },
       responses: responses,
-    }
-  }
-
-  static getSchemaNormalized(): Record<any, any> {
-    const schema = this.getSchema()
-    let requestBody = schema.requestBody
-
-    if (!(requestBody instanceof ZodType)) {
-      // @ts-ignore
-      requestBody = z.object(requestBody)
-    }
-
-    const responses: Record<string, any> = {}
-    if (schema.responses) {
-      for (const [key, value] of Object.entries(schema.responses)) {
-        let schema = value.schema
-
-        if (!(schema instanceof ZodType)) {
-          // @ts-ignore
-          schema = z.object(schema)
-        }
-
-        responses[key] = schema
-      }
-    }
-
-    let parameters: any = null
-    if (schema.parameters) {
-      let values = schema.parameters
-      const _params: any = {}
-
-      // Convert parameter array into object
-      if (Array.isArray(values)) {
-        values = values.reduce(
-          // @ts-ignore
-          (obj, item) => Object.assign(obj, { [item.params.name]: item }),
-          {}
-        )
-      }
-
-      for (const [key, value] of Object.entries(values as Record<any, any>)) {
-        if (!_params[value.location]) {
-          _params[value.location] = {}
-        }
-
-        _params[value.location][key] = value.getValue()
-      }
-
-      parameters = z.object(_params)
-    }
-
-    // Deep copy
-    return {
-      ...schema,
-      responses: responses,
-      ...(parameters ? { parameters: parameters } : {}),
-      ...(requestBody ? { requestBody: requestBody } : {}),
-    }
-  }
-
-  static getSchemaOpenAPI(): Record<any, any> {
-    const schema = this.getSchema()
-    let requestBody = schema.requestBody
-
-    if (!(requestBody instanceof ZodType)) {
-      // @ts-ignore
-      requestBody = z.object(requestBody)
-    }
-
-    const responses: Record<string, any> = {}
-    if (schema.responses) {
-      for (const [key, value] of Object.entries(schema.responses)) {
-        let schema = value.schema
-
-        if (!(schema instanceof ZodType)) {
-          // @ts-ignore
-          schema = z.object(schema)
-        }
-
-        responses[key] = schema
-      }
-    }
-
-    let parameters: any = null
-    if (schema.parameters) {
-      let values = schema.parameters
-      const _params: any = {}
-
-      // Convert parameter array into object
-      if (Array.isArray(values)) {
-        values = values.reduce(
-          // @ts-ignore
-          (obj, item) => Object.assign(obj, { [item.params.name]: item }),
-          {}
-        )
-      }
-
-      for (const [key, value] of Object.entries(values as Record<any, any>)) {
-        if (!_params[value.location]) {
-          _params[value.location] = {}
-        }
-
-        _params[value.location][key] = value.getValue()
-      }
-
-      parameters = z.object(_params)
-    }
-
-    // Deep copy
-    return {
-      ...schema,
-      responses: responses,
-      ...(parameters ? { parameters: parameters } : {}),
-      ...(requestBody ? { requestBody: requestBody } : {}),
     }
   }
 

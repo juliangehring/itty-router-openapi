@@ -17,7 +17,7 @@ class ToDoGet extends OpenAPIRoute {
     },
     requestBody: z.object({
       title: z.string(),
-      description: z.string().optional(),
+      description: z.string(), //.optional(),
       type: z.nativeEnum({
         nextWeek: 'nextWeek',
         nextMonth: 'nextMonth',
